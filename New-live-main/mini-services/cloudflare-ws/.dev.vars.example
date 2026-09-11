@@ -1,0 +1,7 @@
+# Copy this file to .dev.vars (gitignored) for local `wrangler dev` testing.
+# In production these are set via `wrangler secret put <NAME>`, not this file.
+
+DATABASE_URL=
+BETTER_AUTH_SECRET=
+FRONTEND_URL=http://localhost:3000
+PLATFORM_FEE_RATE=0.30

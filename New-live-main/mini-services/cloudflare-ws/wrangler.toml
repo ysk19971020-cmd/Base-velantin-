@@ -1,0 +1,17 @@
+name = "valentine-express-ws"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "APP_ROOM"
+class_name = "AppRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AppRoom"]
+
+# Secrets (set with `wrangler secret put <NAME>`, NOT here):
+#   DATABASE_URL        — Neon Postgres connection string (same DB as the Vercel app)
+#   BETTER_AUTH_SECRET   — must match the Vercel app's exact value
+#   FRONTEND_URL         — your Vercel app's URL, for CORS

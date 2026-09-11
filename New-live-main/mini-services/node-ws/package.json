@@ -1,0 +1,16 @@
+{
+  "name": "valentine-express-ws-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node realtime service — faithful port of mini-services/cloudflare-ws AppRoom (raw WebSocket, { event, data } JSON envelope) for local dev / self-hosting.",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "nodemailer": "^6.9.16",
+    "pg": "^8.23.0",
+    "ws": "^8.18.0"
+  }
+}

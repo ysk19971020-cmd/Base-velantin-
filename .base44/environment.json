@@ -1,0 +1,57 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "GOOGLE_CLIENT_ID",
+      "description": "Google OAuth client ID (optional — enables Google login). Get from Google Cloud Console → APIs & Services → Credentials.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GOOGLE_CLIENT_SECRET",
+      "description": "Google OAuth client secret (optional — enables Google login). Get from Google Cloud Console → APIs & Services → Credentials.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CLOUDINARY_CLOUD_NAME",
+      "description": "Cloudinary cloud name (optional — enables image uploads for avatars/KYC/statuses). Get from Cloudinary dashboard.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CLOUDINARY_API_KEY",
+      "description": "Cloudinary API key (optional — enables image uploads). Get from Cloudinary dashboard.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CLOUDINARY_API_SECRET",
+      "description": "Cloudinary API secret (optional — enables image uploads). Get from Cloudinary dashboard.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "PAYPAL_CLIENT_ID",
+      "description": "PayPal REST API client ID (optional — enables coin purchases). Get from PayPal Developer dashboard (sandbox).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "PAYPAL_CLIENT_SECRET",
+      "description": "PayPal REST API client secret (optional — enables coin purchases). Get from PayPal Developer dashboard (sandbox).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "PAYPAL_WEBHOOK_ID",
+      "description": "PayPal webhook ID (optional — verifies payment webhooks). Get from PayPal Developer dashboard.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GMAIL_USER",
+      "description": "Gmail address used to send live-stream email alerts to subscribers (optional — alerts are skipped until set).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GMAIL_APP_PASSWORD",
+      "description": "16-char Gmail App Password for SMTP (Google Account → Security → 2-Step Verification → App passwords). Optional — alerts are skipped until set.",
+      "requiredAtBoot": false
+    }
+  ]
+}

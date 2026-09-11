@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Wallet" ADD COLUMN "dailyStreak" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Wallet" ADD COLUMN "adRewardsToday" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Wallet" ADD COLUMN "adRewardsDate" TEXT;

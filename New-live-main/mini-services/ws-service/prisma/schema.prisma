@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // hashed bcrypt
+  name      String
+  role      String   @default("user") // "user" | "admin"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile  Profile?
+  wallet   Wallet?
+  coinOrders   CoinOrder[]
+  cashouts    CashoutRequest[]
+  kycSubmissions KycSubmission[]
+  sentMessages  Message[]
+  chatMembers   ChatMember[]
+  liveStreams   LiveStream[]
+  liveGifts     LiveGift[]
+  liveComments  LiveComment[]
+  statuses      Status[]
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avatarUrl   String?
+  paypalEmail String?
+  bio         String?
+  birthday    DateTime?
+  city        String?
+  gender      String?   // "male" | "female" | "other"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Wallet {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coins          Int      @default(0)
+  diamonds       Int      @default(0)
+  lifetimeEarned Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Chat {
+  id        String   @id @default(cuid())
+  name      String
+  isGroup   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ChatMember[]
+  messages Message[]
+}
+
+model ChatMember {
+  id     String @id @default(cuid())
+  chatId String
+  userId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@unique([chatId, userId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  chatId    String
+  senderId  String
+  text      String
+  createdAt DateTime @default(now())
+
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+}
+
+model LiveStream {
+  id        String   @id @default(cuid())
+  hostId    String
+  title     String   @default("")
+  status    String   @default("active") // "active" | "ended"
+  createdAt DateTime @default(now())
+  endedAt   DateTime?
+
+  host     User          @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  comments LiveComment[]
+  gifts    LiveGift[]
+}
+
+model LiveComment {
+  id        String      @id @default(cuid())
+  streamId  String
+  userId    String
+  userName  String
+  text      String
+  createdAt DateTime    @default(now())
+
+  stream LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([streamId, createdAt])
+}
+
+model LiveGift {
+  id        String      @id @default(cuid())
+  streamId  String
+  senderId  String
+  senderName String
+  giftName  String
+  coins     Int
+  diamonds  Int
+  createdAt DateTime    @default(now())
+
+  stream LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  sender User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model CoinOrder {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String   @default("paypal") // "paypal" | "dialog_genie"
+  providerRef   String?  // PayPal order ID etc.
+  status        String   @default("pending") // "pending" | "paid" | "failed"
+  packId        String
+  coins         Int
+  amount        Float    // price in currency
+  currency      String   @default("USD")
+  createdAt     DateTime @default(now())
+  paidAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([providerRef])
+}
+
+model CashoutRequest {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String   @default("paypal") // "paypal" | "dialog_genie"
+  diamonds       Int
+  amount         Float
+  currency       String   @default("USD")
+  paypalEmail    String?
+  destinationJson String?  // JSON blob for provider-specific destination
+  status         String   @default("pending") // "pending" | "paid" | "failed" | "rejected"
+  providerRef    String?  // PayPal batch_id / item_id
+  adminNote      String?
+  processedAt    DateTime?
+  processedBy    String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model KycSubmission {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  status     String   @default("none") // "none" | "pending" | "approved" | "rejected"
+  selfieUrl  String?
+  nicFrontUrl String?
+  nicBackUrl  String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Status {
+  id        String   @id @default(cuid())
+  userId    String
+  userName  String
+  text      String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
