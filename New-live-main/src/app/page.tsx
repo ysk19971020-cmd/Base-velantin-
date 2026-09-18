@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { connectSocket, disconnectSocket } from '@/lib/socket'
+import { Room, RoomEvent } from 'livekit-client'
 import { authFetch, setToken, clearToken, getToken } from '@/lib/auth-client'
 import { uploadImageDirect } from '@/lib/cloudinary-client'
 import { requestNotificationPermission, listenForForegroundMessages } from '@/lib/push-notifications'
@@ -15,20 +16,6 @@ import {
   Shield as LucideShield,
   LogOut as LucideLogOut,
 } from 'lucide-react'
-
-// ============ TURN SERVER (from env via NEXT_PUBLIC) ============
-const ICE_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    ...(process.env.NEXT_PUBLIC_TURN_URL
-      ? [{
-          urls: process.env.NEXT_PUBLIC_TURN_URL,
-          username: process.env.NEXT_PUBLIC_TURN_USER || '',
-          credential: process.env.NEXT_PUBLIC_TURN_PASS || '',
-        }]
-      : []),
-  ],
-}
 
 // ============ CONSTANTS ============
 
@@ -548,7 +535,7 @@ function LivePage({ netState, emit, user, setPage, setThreadChatId, goToLive }: 
     <section className="ve-stage">
       <div className="ve-topbar">
         <strong>Valentine Express stage</strong>
-        <span className="ve-muted">WebRTC live</span>
+        <span className="ve-muted">Live streaming</span>
       </div>
       <div style={{ padding: 20, display: 'grid', gap: 16 }}>
         <div className="ve-panel">
@@ -589,40 +576,56 @@ function LiveStagePage({ netState, emit, user, setPage }: {
   const isHost = live?.hostId === user.id
   const videoRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const hostPcs = useRef(new Map<string, RTCPeerConnection>())
-  const viewerPc = useRef<RTCPeerConnection | null>(null)
+  const lkRoomRef = useRef<Room | null>(null)
   const [text, setText] = useState('')
   const [status, setStatus] = useState('Connecting…')
-  const pendingViewers = useRef<{ viewerId: string; liveId: string }[]>([])
-  const joined = useRef(false)
+
+  // LiveKit handles all video/audio transport (SFU — the host sends one
+  // upstream that LiveKit fans out to every viewer, instead of a P2P mesh).
+  // The app's own WS connection still carries chat, gifts and viewer counts.
+  async function startLiveKitRoom(roomName: string, asHost: boolean, stream?: MediaStream) {
+    try {
+      const res = await authFetch('/api/livekit/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: roomName, isHost: asHost }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setStatus(data.error || 'Live streaming unavailable'); return }
+      const room = new Room({ adaptiveStream: true })
+      if (!asHost) {
+        const remoteStream = new MediaStream()
+        room.on(RoomEvent.TrackSubscribed, track => {
+          remoteStream.addTrack(track.mediaStreamTrack)
+          if (videoRef.current) {
+            videoRef.current.srcObject = remoteStream
+            videoRef.current.play().catch(() => {})
+          }
+          setStatus('Watching live')
+        })
+      }
+      await room.connect(data.url, data.token)
+      lkRoomRef.current = room
+      if (asHost && stream) {
+        for (const track of stream.getTracks()) {
+          await room.localParticipant.publishTrack(track)
+        }
+      }
+    } catch {
+      setStatus('Live streaming unavailable — try again later')
+    }
+  }
 
   useEffect(() => {
     if (!liveId) return
     emit({ type: 'live_join', liveId })
-    joined.current = true
     return () => {
       emit({ type: 'live_leave', liveId })
       localStreamRef.current?.getTracks().forEach(t => t.stop())
-      hostPcs.current.forEach(pc => pc.close())
-      hostPcs.current.clear()
-      viewerPc.current?.close()
-      viewerPc.current = null
+      lkRoomRef.current?.disconnect()
+      lkRoomRef.current = null
     }
   }, [liveId])
-
-  const offerTo = useCallback((viewerId: string, lId: string, stream: MediaStream) => {
-    const existing = hostPcs.current.get(viewerId)
-    existing?.close()
-    const pc = new RTCPeerConnection(ICE_CONFIG)
-    for (const track of stream.getTracks()) pc.addTrack(track, stream)
-    pc.onicecandidate = e => { if (e.candidate) emit({ type: 'rtc_ice', liveId: lId, to: viewerId, candidate: e.candidate }) }
-    hostPcs.current.set(viewerId, pc)
-    ;(async () => {
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      emit({ type: 'rtc_offer', liveId: lId, to: viewerId, sdp: pc.localDescription })
-    })()
-  }, [emit])
 
   useEffect(() => {
     if (!isHost || !liveId) return
@@ -641,7 +644,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
           await videoRef.current.play().catch(() => {})
         }
         setStatus('You are live')
-        pendingViewers.current.forEach(q => offerTo(q.viewerId, q.liveId, stream))
+        await startLiveKitRoom(liveId, true, stream)
       } catch {
         setStatus('Camera blocked — studio mode')
         const canvas = document.createElement('canvas')
@@ -672,55 +675,17 @@ function LiveStagePage({ netState, emit, user, setPage }: {
         localStreamRef.current = stream
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true }
         setStatus('You are live (studio)')
+        await startLiveKitRoom(liveId, true, stream)
       }
     })()
     return () => { stop = true }
   }, [isHost, liveId])
 
+  // Viewer — subscribe to the host's stream through LiveKit
   useEffect(() => {
-    const need = netState.rtcNeedOffer
-    if (!need || !isHost || need.liveId !== liveId) return
-    if (!localStreamRef.current) {
-      pendingViewers.current.push({ viewerId: need.viewerId, liveId: need.liveId })
-      return
-    }
-    offerTo(need.viewerId, need.liveId, localStreamRef.current)
-  }, [netState.rtcNeedOffer, isHost, liveId, offerTo])
-
-  useEffect(() => {
-    const sig = netState.rtcFromHost
-    if (!sig || !liveId || sig.liveId !== liveId) return
-    const from = sig.from
-
-    if (isHost) {
-      const pc = hostPcs.current.get(from)
-      if (!pc) return
-      if (sig.type === 'rtc_answer' && sig.sdp) pc.setRemoteDescription(sig.sdp as RTCSessionDescriptionInit).catch(() => {})
-      if (sig.type === 'rtc_ice' && sig.candidate) pc.addIceCandidate(sig.candidate as RTCIceCandidateInit).catch(() => {})
-      return
-    }
-
-    if (sig.type === 'rtc_offer' && sig.sdp) {
-      viewerPc.current?.close()
-      const pc = new RTCPeerConnection(ICE_CONFIG)
-      pc.onicecandidate = e => { if (e.candidate) emit({ type: 'rtc_ice', liveId, to: from, candidate: e.candidate }) }
-      pc.ontrack = e => {
-        const s = e.streams[0] || new MediaStream([e.track])
-        if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play().catch(() => {}) }
-        setStatus('Watching live')
-      }
-      viewerPc.current = pc
-      ;(async () => {
-        await pc.setRemoteDescription(sig.sdp as RTCSessionDescriptionInit)
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        emit({ type: 'rtc_answer', liveId, to: from, sdp: pc.localDescription })
-      })()
-    }
-    if (sig.type === 'rtc_ice' && sig.candidate && viewerPc.current) {
-      viewerPc.current.addIceCandidate(sig.candidate as RTCIceCandidateInit).catch(() => {})
-    }
-  }, [netState.rtcFromHost, isHost, liveId])
+    if (isHost || !liveId) return
+    startLiveKitRoom(liveId, false)
+  }, [isHost, liveId])
 
   if (!live) {
     return (
@@ -1692,8 +1657,6 @@ type NetState = {
   lives: NetLive[]
   comments: Record<string, NetComment[]>
   openChatId: string | null
-  rtcNeedOffer: { liveId: string; viewerId: string; viewerName: string } | null
-  rtcFromHost: { type: string; from: string; liveId: string; sdp?: unknown; candidate?: unknown } | null
   giftFlash: string | null
   currentLiveId: string | null
   statuses: Array<{ id: string; userName: string; text: string; age: string; imageUrl?: string | null }>
@@ -1709,7 +1672,7 @@ export default function Home() {
   const [threadChatId, setThreadChatId] = useState<string | null>(null)
   const [netState, setNetState] = useState<NetState>({
     connected: false, error: null, me: null, users: [], chats: [], messages: {},
-    lives: [], comments: {}, openChatId: null, rtcNeedOffer: null, rtcFromHost: null,
+    lives: [], comments: {}, openChatId: null,
     giftFlash: null, currentLiveId: null, statuses: [],
   })
   const netRef = useRef(netState)
@@ -1858,10 +1821,6 @@ export default function Home() {
         return { ...n, lives, comments, giftFlash }
       })
     })
-    s.on('rtc_need_offer', (data: any) => setNetState(n => ({ ...n, rtcNeedOffer: data })))
-    s.on('rtc_offer', (data: any) => setNetState(n => ({ ...n, rtcFromHost: data })))
-    s.on('rtc_answer', (data: any) => setNetState(n => ({ ...n, rtcFromHost: data })))
-    s.on('rtc_ice', (data: any) => setNetState(n => ({ ...n, rtcFromHost: data })))
 
     return () => { disconnectSocket() }
   }, [])

@@ -20,6 +20,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.1.1",
     "jose": "^5.9.6",
+    "livekit-client": "^2.6.1",
     "@mdxeditor/editor": "^3.39.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^6.11.1",
