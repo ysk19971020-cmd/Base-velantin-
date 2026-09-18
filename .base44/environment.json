@@ -44,6 +44,21 @@
       "requiredAtBoot": false
     },
     {
+      "name": "LIVEKIT_URL",
+      "description": "LiveKit project URL (wss://<project>.livekit.cloud) — enables live video/audio streaming. Get from LiveKit Cloud console (https://cloud.livekit.io).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "LIVEKIT_API_KEY",
+      "description": "LiveKit API key — LiveKit Cloud console → project Settings → API keys.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "LIVEKIT_API_SECRET",
+      "description": "LiveKit API secret — LiveKit Cloud console → project Settings → API keys.",
+      "requiredAtBoot": false
+    },
+    {
       "name": "GMAIL_USER",
       "description": "Gmail address used to send live-stream email alerts to subscribers (optional — alerts are skipped until set).",
       "requiredAtBoot": false
