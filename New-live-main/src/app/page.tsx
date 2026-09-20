@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { connectSocket, disconnectSocket } from '@/lib/socket'
-import { Room, RoomEvent } from 'livekit-client'
+import AgoraRTC from 'agora-rtc-sdk-ng'
+import { getRealtime, LOBBY_CHANNEL, chatChannel, liveChannel } from '@/lib/agora'
 import { authFetch, setToken, clearToken, getToken } from '@/lib/auth-client'
 import { uploadImageDirect } from '@/lib/cloudinary-client'
 import { requestNotificationPermission, listenForForegroundMessages } from '@/lib/push-notifications'
@@ -168,11 +168,11 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
   )
 }
 
-function Shell({ page, setPage, threadChatId, setThreadChatId, user, setUser, netState, emit, socket, setStatusMsg, onLogout, goToLive, goToProfile, viewingProfile }: {
+function Shell({ page, setPage, threadChatId, setThreadChatId, user, setUser, netState, emit, setStatusMsg, onLogout, goToLive, goToProfile, viewingProfile }: {
   page: Page; setPage: (p: Page) => void
   threadChatId: string | null; setThreadChatId: (id: string | null) => void
   user: AuthUser; setUser: (u: AuthUser) => void; netState: NetState; emit: (msg: Record<string, unknown>) => void
-  socket: any; setStatusMsg: (m: string) => void; onLogout: () => void
+  setStatusMsg: (m: string) => void; onLogout: () => void
   goToLive: (liveId: string) => void
   goToProfile: (u: { id: string; name: string; avatarUrl: string | null; city: string | null }) => void
   viewingProfile: { id: string; name: string; avatarUrl: string | null; city: string | null } | null
@@ -219,7 +219,7 @@ function Shell({ page, setPage, threadChatId, setThreadChatId, user, setUser, ne
         )}
         <div style={{ flex: 1 }} />
         <div className="ve-muted" style={{ fontSize: 10, textAlign: 'center' }}>
-          {socket?.connected ? `${netState.users.length} online` : 'offline'}
+          {netState.connected ? `${netState.users.length} online` : 'offline'}
         </div>
         {/* User avatar in rail */}
         <div
@@ -558,7 +558,7 @@ function LivePage({ netState, emit, user, setPage, setThreadChatId, goToLive }: 
             <button key={l.id} className="ve-panel" style={{ textAlign: 'left' }} onClick={() => goToLive(l.id)}>
               <div className="ve-badge"><span className="ve-live-dot" /> LIVE · {l.host}</div>
               <h3>{l.title}</h3>
-              <p className="ve-muted">{l.viewers} watching</p>
+              <p className="ve-muted">{l.viewers > 0 ? `${l.viewers} watching` : 'Live now'}</p>
             </button>
           ))}
         </div>
@@ -576,41 +576,43 @@ function LiveStagePage({ netState, emit, user, setPage }: {
   const isHost = live?.hostId === user.id
   const videoRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const lkRoomRef = useRef<Room | null>(null)
+  const rtcRef = useRef<any>(null)
+  const tracksRef = useRef<any[]>([])
   const [text, setText] = useState('')
   const [status, setStatus] = useState('Connecting…')
 
-  // LiveKit handles all video/audio transport (SFU — the host sends one
-  // upstream that LiveKit fans out to every viewer, instead of a P2P mesh).
-  // The app's own WS connection still carries chat, gifts and viewer counts.
-  async function startLiveKitRoom(roomName: string, asHost: boolean, stream?: MediaStream) {
+  // Agora RTC handles all video/audio transport (the host publishes one
+  // stream that Agora's cloud fans out to every viewer). RTM (via emit +
+  // src/lib/agora) carries chat, gifts and viewer counts.
+  async function startAgoraVideo(channel: string, asHost: boolean, tracks?: any[]) {
     try {
-      const res = await authFetch('/api/livekit/token', {
+      const res = await authFetch('/api/agora/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: roomName, isHost: asHost }),
+        body: JSON.stringify({ channel, isHost: asHost }),
       })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Live streaming unavailable'); return }
-      const room = new Room({ adaptiveStream: true })
+      const client = AgoraRTC.createClient({ mode: 'live', role: asHost ? 'host' : 'audience' })
       if (!asHost) {
-        const remoteStream = new MediaStream()
-        room.on(RoomEvent.TrackSubscribed, track => {
-          remoteStream.addTrack(track.mediaStreamTrack)
-          if (videoRef.current) {
-            videoRef.current.srcObject = remoteStream
-            videoRef.current.play().catch(() => {})
-          }
-          setStatus('Watching live')
+        client.on('user-published', async (u: any, mediaType: any) => {
+          try {
+            await client.subscribe(u, mediaType)
+            if (mediaType === 'video' && u.videoTrack) {
+              const stream = new MediaStream([u.videoTrack.getMediaStreamTrack()])
+              if (videoRef.current) {
+                videoRef.current.srcObject = stream
+                videoRef.current.play().catch(() => {})
+              }
+              setStatus('Watching live')
+            }
+            if (mediaType === 'audio' && u.audioTrack) u.audioTrack.play()
+          } catch { /* ignore subscribe hiccup */ }
         })
       }
-      await room.connect(data.url, data.token)
-      lkRoomRef.current = room
-      if (asHost && stream) {
-        for (const track of stream.getTracks()) {
-          await room.localParticipant.publishTrack(track)
-        }
-      }
+      await client.join(data.appId, channel, data.rtcToken)
+      rtcRef.current = client
+      if (asHost && tracks?.length) await client.publish(tracks)
     } catch {
       setStatus('Live streaming unavailable — try again later')
     }
@@ -622,8 +624,6 @@ function LiveStagePage({ netState, emit, user, setPage }: {
     return () => {
       emit({ type: 'live_leave', liveId })
       localStreamRef.current?.getTracks().forEach(t => t.stop())
-      lkRoomRef.current?.disconnect()
-      lkRoomRef.current = null
     }
   }, [liveId])
 
@@ -632,19 +632,16 @@ function LiveStagePage({ netState, emit, user, setPage }: {
     let stop = false
     ;(async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
-        })
-        if (stop) { stream.getTracks().forEach(t => t.stop()); return }
-        localStreamRef.current = stream
+        const [mic, cam] = await AgoraRTC.createMicrophoneAndCameraTracks()
+        if (stop) { mic.close(); cam.close(); return }
+        tracksRef.current = [mic, cam]
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
+          videoRef.current.srcObject = new MediaStream([cam.getMediaStreamTrack()])
           videoRef.current.muted = true
           await videoRef.current.play().catch(() => {})
         }
         setStatus('You are live')
-        await startLiveKitRoom(liveId, true, stream)
+        await startAgoraVideo(liveId, true, [mic, cam])
       } catch {
         setStatus('Camera blocked — studio mode')
         const canvas = document.createElement('canvas')
@@ -675,16 +672,30 @@ function LiveStagePage({ netState, emit, user, setPage }: {
         localStreamRef.current = stream
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true }
         setStatus('You are live (studio)')
-        await startLiveKitRoom(liveId, true, stream)
+        try {
+          const customVideo = AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: stream.getVideoTracks()[0] })
+          tracksRef.current = [customVideo]
+          await startAgoraVideo(liveId, true, [customVideo])
+        } catch { /* studio preview keeps running even if publish fails */ }
       }
     })()
-    return () => { stop = true }
+    return () => {
+      stop = true
+      tracksRef.current.forEach(t => { try { t.close() } catch { /* ignore */ } })
+      tracksRef.current = []
+      ;(async () => { try { await rtcRef.current?.leave() } catch { /* ignore */ } })()
+      rtcRef.current = null
+    }
   }, [isHost, liveId])
 
-  // Viewer — subscribe to the host's stream through LiveKit
+  // Viewer — subscribe to the host's stream through Agora RTC
   useEffect(() => {
     if (isHost || !liveId) return
-    startLiveKitRoom(liveId, false)
+    startAgoraVideo(liveId, false)
+    return () => {
+      ;(async () => { try { await rtcRef.current?.leave() } catch { /* ignore */ } })()
+      rtcRef.current = null
+    }
   }, [isHost, liveId])
 
   if (!live) {
@@ -707,7 +718,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
         <div className="ve-live-overlay">
           <div className="ve-live-top">
             <button className="ve-icon-btn" aria-label="Back" onClick={() => setPage('live')}>←</button>
-            <div className="ve-badge"><span className="ve-live-dot" /> {live.host} · {live.viewers}</div>
+            <div className="ve-badge"><span className="ve-live-dot" /> {live.host}{live.viewers > 0 ? ` · ${live.viewers}` : ''}</div>
             <form className="ve-live-chat-top" onSubmit={e => {
               e.preventDefault()
               if (!text.trim()) return
@@ -1668,7 +1679,7 @@ export default function Home() {
   const [page, setPage] = useState<Page>('landing')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authError, setAuthError] = useState('')
-  const [socket, setSocket] = useState<any>(null)
+  const allUsersRef = useRef<Map<string, string>>(new Map())
   const [threadChatId, setThreadChatId] = useState<string | null>(null)
   const [netState, setNetState] = useState<NetState>({
     connected: false, error: null, me: null, users: [], chats: [], messages: {},
@@ -1714,120 +1725,247 @@ export default function Home() {
     return () => { unsubscribe?.() }
   }, [user?.id])
 
-  // Connect socket.io (via CDN)
+  // Resume a stored session on mount — no realtime needed for this.
   useEffect(() => {
-    const s = connectSocket()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSocket(s)
-    s.on('connect', () => {
-      setNetState(n => ({ ...n, connected: true, error: null }))
-      const existingToken = getToken()
-      if (existingToken) {
-        // Returning visitor with a stored session — resume without a
-        // manual login, and (re)join the WS with the same signed token.
-        authFetch('/api/auth/me').then(r => r.ok ? r.json() : Promise.reject())
-          .then((meData: any) => {
-            setUser({
-              id: meData.user.id,
-              name: meData.user.name,
-              email: meData.user.email,
-              role: meData.user.role,
-              coins: meData.wallet?.coins ?? 0,
-              diamonds: meData.wallet?.diamonds ?? 0,
-              lifetimeEarned: meData.wallet?.lifetimeEarned ?? 0,
-              avatarUrl: meData.profile?.avatarUrl,
-              paypalEmail: meData.profile?.paypalEmail,
-              kycStatus: meData.kyc?.status ?? 'none',
-              bio: meData.profile?.bio,
-              birthday: meData.profile?.birthday,
-              city: meData.profile?.city,
-              gender: meData.profile?.gender,
-              age: meData.profile?.age,
-            })
-            s.emit('hello', { token: existingToken })
-            setShowDailyBonus(true)
-            setPage(p => p === 'landing' || p === 'register' ? 'home' : p)
-          })
-          .catch(() => { clearToken() })
-      }
-    })
-    s.on('disconnect', () => setNetState(n => ({ ...n, connected: false })))
-    s.on('error', (err: string) => setNetState(n => ({ ...n, error: err })))
-
-    s.on('snapshot', (data: any) => {
-      setNetState(n => ({
-        ...n,
-        me: data.me,
-        users: data.users ?? [],
-        chats: data.chats ?? [],
-        messages: data.messages ?? {},
-        lives: data.lives ?? [],
-        comments: data.comments ?? {},
-        statuses: (data.statuses ?? []).map((s: any) => ({
-          id: s.id,
-          userName: s.userName,
-          text: s.text,
-          imageUrl: s.imageUrl,
-          age: s.age ?? (s.createdAt ? new Date(s.createdAt).toLocaleString() : ''),
-        })),
-      }))
-    })
-
-    s.on('presence', (data: any) => setNetState(n => ({ ...n, users: data.users ?? [] })))
-    s.on('open_chat', (data: any) => {
-      setNetState(n => ({ ...n, openChatId: data.chatId }))
-      setThreadChatId(data.chatId)
-      setPage('thread')
-    })
-    s.on('chat_msg', (data: any) => {
-      setNetState(n => {
-        const chatId = data.chatId
-        const message = data.message
-        const chat = data.chat
-        const msgs = { ...n.messages, [chatId]: [...(n.messages[chatId] ?? []), message] }
-        const chats = chat ? [chat, ...n.chats.filter(c => c.id !== chat.id)] : n.chats
-        return { ...n, messages: msgs, chats }
+    const existingToken = getToken()
+    if (!existingToken) return
+    // Returning visitor with a stored session — resume without a login.
+    authFetch('/api/auth/me').then(r => r.ok ? r.json() : Promise.reject())
+      .then((meData: any) => {
+        setUser({
+          id: meData.user.id,
+          name: meData.user.name,
+          email: meData.user.email,
+          role: meData.user.role,
+          coins: meData.wallet?.coins ?? 0,
+          diamonds: meData.wallet?.diamonds ?? 0,
+          lifetimeEarned: meData.wallet?.lifetimeEarned ?? 0,
+          avatarUrl: meData.profile?.avatarUrl,
+          paypalEmail: meData.profile?.paypalEmail,
+          kycStatus: meData.kyc?.status ?? 'none',
+          bio: meData.profile?.bio,
+          birthday: meData.profile?.birthday,
+          city: meData.profile?.city,
+          gender: meData.profile?.gender,
+          age: meData.profile?.age,
+        })
+        setShowDailyBonus(true)
+        setPage(p => p === 'landing' || p === 'register' ? 'home' : p)
       })
-    })
-    s.on('lives', (data: any) => setNetState(n => ({ ...n, lives: data.lives ?? [] })))
-    s.on('live_started', (data: any) => {
-      const live = data.live
-      setNetState(n => {
-        const lives = [live, ...n.lives.filter(l => l.id !== live.id)]
-        return { ...n, lives, currentLiveId: live.id }
-      })
-      setPage('liveStage')
-      setThreadChatId(null)
-    })
-    s.on('live_ended', (data: any) => {
-      setNetState(n => ({
-        ...n,
-        lives: n.lives.filter(l => l.id !== data.liveId),
-        currentLiveId: n.currentLiveId === data.liveId ? null : n.currentLiveId,
-      }))
-      if (netRef.current.currentLiveId === data.liveId) setPage('live')
-    })
-    s.on('live_state', (data: any) => {
-      const live = data.live
-      setNetState(n => {
-        const lives = n.lives.some(l => l.id === live.id) ? n.lives.map(l => l.id === live.id ? live : l) : [live, ...n.lives]
-        const comments = { ...n.comments, [live.id]: data.comments ?? [] }
-        let giftFlash = n.giftFlash
-        if (data.gift) {
-          const g = data.gift as { from: string; name: string }
-          giftFlash = `${g.from} sent ${g.name}`
-          setTimeout(() => setNetState(nn => ({ ...nn, giftFlash: null })), 3000)
-        }
-        return { ...n, lives, comments, giftFlash }
-      })
-    })
-
-    return () => { disconnectSocket() }
+      .catch(() => { clearToken() })
   }, [])
 
+  // Connect Agora RTM after login — chat, presence, lives and gift flashes
+  // all flow through Agora's cloud now (no separate WS service).
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    const rt = getRealtime()
+
+    // User names for the presence lists
+    authFetch('/api/users').then((list: any) => {
+      if (Array.isArray(list)) list.forEach((u: any) => allUsersRef.current.set(u.id, u.name))
+    }).catch(() => {})
+
+    ;(async () => {
+      try {
+        await rt.login(user.id, async () => {
+          const res = await authFetch('/api/agora/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || 'Realtime unavailable')
+          return { appId: data.appId, token: data.rtmToken }
+        })
+        if (cancelled) { await rt.logout(); return }
+        setNetState(n => ({ ...n, connected: true, error: null }))
+        // Online users (presence on the shared lobby channel)
+        await rt.subscribe(LOBBY_CHANNEL)
+        // Chat list + a realtime channel per chat
+        const res = await authFetch('/api/chats')
+        const chats = await res.json()
+        if (Array.isArray(chats)) {
+          setNetState(n => ({ ...n, chats }))
+          for (const c of chats) rt.subscribe(chatChannel(c.id), false)
+        }
+        // Active lives
+        const lres = await authFetch('/api/lives')
+        const livesData = await lres.json()
+        if (Array.isArray(livesData)) setNetState(n => ({ ...n, lives: livesData }))
+      } catch (err: any) {
+        setNetState(n => ({ ...n, error: err?.message || 'Realtime unavailable' }))
+      }
+    })()
+
+    const offMsg = rt.onMessage((channel, publisher, raw) => {
+      if (publisher === user.id) return
+      let payload: any
+      try { payload = JSON.parse(raw) } catch { return }
+      if (channel === LOBBY_CHANNEL) {
+        if (payload?.kind === 'live' && payload.op === 'started' && payload.live) {
+          const live = payload.live
+          setNetState(n => ({ ...n, lives: [live, ...n.lives.filter(l => l.id !== live.id)] }))
+        } else if (payload?.kind === 'live' && payload.op === 'ended' && payload.liveId) {
+          setNetState(n => ({
+            ...n,
+            lives: n.lives.filter(l => l.id !== payload.liveId),
+            currentLiveId: n.currentLiveId === payload.liveId ? null : n.currentLiveId,
+          }))
+          if (netRef.current.currentLiveId === payload.liveId) setPage('live')
+        }
+      } else if (payload?.kind === 'chat' && payload.chatId && payload.message) {
+        const { chatId, message, chat } = payload
+        setNetState(n => {
+          const msgs = { ...n.messages, [chatId]: [...(n.messages[chatId] ?? []), message] }
+          const chats = chat ? [chat, ...n.chats.filter(c => c.id !== chat.id)] : n.chats
+          return { ...n, messages: msgs, chats }
+        })
+      } else if (payload?.kind === 'comment' && payload.liveId && payload.comment) {
+        setNetState(n => ({
+          ...n,
+          comments: { ...n.comments, [payload.liveId]: [...(n.comments[payload.liveId] ?? []), payload.comment] },
+        }))
+      } else if (payload?.kind === 'gift' && payload.liveId && payload.name) {
+        const flash = `${payload.from || 'Someone'} sent ${payload.name}`
+        setNetState(n => ({ ...n, giftFlash: flash }))
+        setTimeout(() => setNetState(nn => ({ ...nn, giftFlash: null })), 3000)
+      }
+    })
+
+    const offPres = rt.onPresence((channel, userIds) => {
+      if (channel === LOBBY_CHANNEL) {
+        setNetState(n => ({
+          ...n,
+          users: userIds.map(id => ({ id, name: allUsersRef.current.get(id) || 'User', email: '' })),
+        }))
+      } else {
+        // Viewer count for the live stream channel we're subscribed to
+        const count = userIds.length
+        setNetState(n => ({
+          ...n,
+          lives: n.lives.map(l => n.currentLiveId === l.id && channel === liveChannel(l.id) ? { ...l, viewers: count } : l),
+        }))
+      }
+    })
+
+    return () => {
+      cancelled = true
+      offMsg()
+      offPres()
+      getRealtime().logout()
+    }
+  }, [user?.id])
+
+  // Load chat history when a thread is opened (persisted via /api/chat)
+  useEffect(() => {
+    const chatId = threadChatId
+    if (!chatId || netRef.current.messages[chatId]?.length) return
+    authFetch(`/api/chat/messages?chatId=${chatId}`).then(r => r.json()).then((msgs: any) => {
+      if (Array.isArray(msgs)) setNetState(n => ({ ...n, messages: { ...n.messages, [chatId]: msgs } }))
+    }).catch(() => {})
+  }, [threadChatId])
+
+  // Old socket emit() calls now dispatch to API routes (persistence +
+  // economy) and Agora RTM (realtime fan-out).
   const emit = useCallback((msg: Record<string, unknown>) => {
-    if (socket?.connected) socket.emit(msg.type as string, msg)
-  }, [socket])
+    const type = msg.type as string
+    const rt = getRealtime()
+    ;(async () => {
+      try {
+        if (type === 'dm_open') {
+          const res = await authFetch('/api/chat/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ peerId: msg.peerId }),
+          })
+          const data = await res.json()
+          if (data.chat) {
+            await rt.subscribe(chatChannel(data.chat.id), false)
+            setNetState(n => ({ ...n, openChatId: data.chat.id, chats: [data.chat, ...n.chats.filter(c => c.id !== data.chat.id)] }))
+            setThreadChatId(data.chat.id)
+            setPage('thread')
+          }
+        } else if (type === 'chat_send') {
+          const chatId = String(msg.chatId)
+          const res = await authFetch('/api/chat/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId, text: msg.text }),
+          })
+          const data = await res.json()
+          if (data.message) {
+            const chat = data.chat
+            setNetState(n => {
+              const msgs = { ...n.messages, [chatId]: [...(n.messages[chatId] ?? []), data.message] }
+              const chats = chat ? [chat, ...n.chats.filter(c => c.id !== chat.id)] : n.chats
+              return { ...n, messages: msgs, chats }
+            })
+            rt.publish(chatChannel(chatId), JSON.stringify({ kind: 'chat', chatId, message: data.message, chat }))
+          }
+        } else if (type === 'live_start') {
+          const res = await authFetch('/api/live/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: msg.title }),
+          })
+          const data = await res.json()
+          if (data.live) {
+            const live = data.live
+            setNetState(n => ({ ...n, lives: [live, ...n.lives.filter(l => l.id !== live.id)], currentLiveId: live.id }))
+            setThreadChatId(null)
+            setPage('liveStage')
+            rt.publish(LOBBY_CHANNEL, JSON.stringify({ kind: 'live', op: 'started', live }))
+            await rt.subscribe(liveChannel(live.id))
+          }
+        } else if (type === 'live_join') {
+          await rt.subscribe(liveChannel(String(msg.liveId)))
+        } else if (type === 'live_leave') {
+          await rt.unsubscribe(liveChannel(String(msg.liveId)))
+        } else if (type === 'live_end') {
+          const liveId = String(msg.liveId)
+          await authFetch('/api/live/end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ liveId }),
+          })
+          await rt.unsubscribe(liveChannel(liveId))
+          setNetState(n => ({ ...n, lives: n.lives.filter(l => l.id !== liveId) }))
+          rt.publish(LOBBY_CHANNEL, JSON.stringify({ kind: 'live', op: 'ended', liveId }))
+        } else if (type === 'live_comment') {
+          const liveId = String(msg.liveId)
+          const res = await authFetch(`/api/live/${liveId}/comment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: msg.text }),
+          })
+          const data = await res.json()
+          if (data.comment) {
+            setNetState(n => ({
+              ...n,
+              comments: { ...n.comments, [liveId]: [...(n.comments[liveId] ?? []), data.comment] },
+            }))
+            rt.publish(liveChannel(liveId), JSON.stringify({ kind: 'comment', liveId, comment: data.comment }))
+          }
+        } else if (type === 'live_gift') {
+          const liveId = String(msg.liveId)
+          const res = await authFetch(`/api/live/${liveId}/gift`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ giftId: msg.giftId }),
+          })
+          const data = await res.json()
+          if (data.ok) {
+            handleSetUser('refresh')
+            setNetState(n => ({ ...n, giftFlash: `${user?.name ?? 'Someone'} sent ${data.gift.name}` }))
+            setTimeout(() => setNetState(nn => ({ ...nn, giftFlash: null })), 3000)
+            rt.publish(liveChannel(liveId), JSON.stringify({ kind: 'gift', liveId, from: user?.name, name: data.gift.name }))
+          }
+        }
+      } catch { /* network hiccup — silent, same as the old WS client */ }
+    })()
+  }, [user?.id])
 
   // Load statuses on mount
   useEffect(() => {
@@ -1866,9 +2004,7 @@ export default function Home() {
     setUser(fullUser)
     setShowDailyBonus(true)
 
-    if (socket?.connected) {
-      socket.emit('hello', { token: data.token })
-    }
+    // RTM connects automatically via the [user?.id] effect above.
     setPage('home')
   }
 
@@ -1937,7 +2073,7 @@ export default function Home() {
   }
 
   function handleLogout() {
-    disconnectSocket()
+    getRealtime().logout()
     clearToken()
     setUser(null as any)
     setShowDailyBonus(false)
@@ -1960,7 +2096,7 @@ export default function Home() {
   if (page === 'register') {
     return (
       <div className="ve-app-bg">
-        <RegisterPage onRegister={handleRegister} onGoLogin={() => setPage('landing')} wsConnected={netState.connected} />
+        <RegisterPage onRegister={handleRegister} onGoLogin={() => setPage('landing')} wsConnected={true} />
       </div>
     )
   }
@@ -1968,7 +2104,7 @@ export default function Home() {
   if (!user) {
     return (
       <div className="ve-app-bg">
-        <LandingPage onLogin={handleLogin} onGoRegister={() => setPage('register')} wsConnected={netState.connected} wsError={authError || netState.error} />
+        <LandingPage onLogin={handleLogin} onGoRegister={() => setPage('register')} wsConnected={true} wsError={authError} />
       </div>
     )
   }
@@ -1978,7 +2114,7 @@ export default function Home() {
       <Shell
         page={page} setPage={setPage}
         threadChatId={threadChatId} setThreadChatId={setThreadChatId}
-        user={user} setUser={setUser} netState={netState} emit={emit} socket={socket}
+        user={user} setUser={setUser} netState={netState} emit={emit}
         setStatusMsg={handleSetUser} onLogout={handleLogout}
         goToLive={goToLive} goToProfile={goToProfile} viewingProfile={viewingProfile}
       />
