@@ -15,7 +15,7 @@ services:
       retries: 10
 
   web:
-    image: oven/bun:1.2
+    image: node:22-slim
     restart: unless-stopped
     working_dir: /app
     volumes:
@@ -35,7 +35,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "bun install && bunx prisma db push --accept-data-loss && bunx next dev -p 3000 -H 0.0.0.0"
+    command: sh -c "npm install && npx prisma db push --accept-data-loss && npx next dev -p 3000 -H 0.0.0.0"
 
   ws:
     image: oven/bun:1.2
