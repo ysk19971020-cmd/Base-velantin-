@@ -1,8 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import AgoraRTC from 'agora-rtc-sdk-ng'
 import { getRealtime, LOBBY_CHANNEL, chatChannel, liveChannel } from '@/lib/agora'
+
+// Agora RTC SDK references `window` at module-evaluation time, so it cannot
+// be imported at the top level of a 'use client' component (Next.js still
+// SSRs client components for the initial render). Lazy-load it on the
+// browser side only.
+let _AgoraRTC: any = null
+async function AgoraRTC() {
+  if (!_AgoraRTC) _AgoraRTC = (await import('agora-rtc-sdk-ng')).default
+  return _AgoraRTC
+}
 import { authFetch, setToken, clearToken, getToken } from '@/lib/auth-client'
 import { uploadImageDirect } from '@/lib/cloudinary-client'
 import { requestNotificationPermission, listenForForegroundMessages } from '@/lib/push-notifications'
@@ -97,8 +106,9 @@ function LandingPage({ onLogin, onGoRegister, wsConnected, wsError }: {
 
   return (
     <div className="ve-hero">
-      <form className="ve-hero-card ve-panel" onSubmit={handleSubmit}>
+      <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
+        <div className="ve-heart-glow">❤️</div>
         <div className="ve-tag">{BRAND.tagline}</div>
         <h1>{BRAND.short}</h1>
         <p>Real-time live streaming with gifts, chat, and creator payouts.</p>
@@ -106,11 +116,11 @@ function LandingPage({ onLogin, onGoRegister, wsConnected, wsError }: {
         <input className="ve-field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         {error && <p className="ve-err" style={{ marginTop: 8 }}>{error}</p>}
         {wsError && <p className="ve-err" style={{ marginTop: 8 }}>{wsError}</p>}
-        <button className="ve-btn ve-btn-primary" style={{ width: '100%', marginTop: 14 }} type="submit" disabled={!wsConnected}>
+        <button className="ve-btn ve-btn-primary" style={{ width: '100%', marginTop: 18 }} type="submit" disabled={!wsConnected}>
           {wsConnected ? 'Sign in' : 'Connecting to server…'}
         </button>
-        <p className="ve-muted" style={{ marginTop: 14 }}>
-          Don&apos;t have an account? <button type="button" className="ve-btn-ghost" style={{ color: 'var(--ve-rose-2)' }} onClick={onGoRegister}>Register</button>
+        <p className="ve-muted" style={{ marginTop: 18 }}>
+          Don&apos;t have an account? <button type="button" className="ve-btn-ghost" style={{ color: 'var(--ve-rose-2)', fontWeight: 600 }} onClick={onGoRegister}>Register</button>
         </p>
       </form>
     </div>
@@ -148,8 +158,10 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
 
   return (
     <div className="ve-hero">
-      <form className="ve-hero-card ve-panel" onSubmit={handleSubmit}>
+      <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
+        <div className="ve-heart-glow">❤️</div>
+        <div className="ve-tag">{BRAND.tagline}</div>
         <h1>Create Account</h1>
         <p className="ve-muted">Join Valentine Express</p>
         <input className="ve-field" placeholder="Display name" value={name} onChange={e => setName(e.target.value)} />
@@ -157,11 +169,11 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
         <input className="ve-field" type="password" placeholder="Password (6+ chars)" value={password} onChange={e => setPassword(e.target.value)} />
         <input className="ve-field" type="password" placeholder="Confirm password" value={confirm} onChange={e => setConfirm(e.target.value)} />
         {error && <p className="ve-err" style={{ marginTop: 8 }}>{error}</p>}
-        <button className="ve-btn ve-btn-primary" style={{ width: '100%', marginTop: 14 }} type="submit" disabled={!wsConnected}>
+        <button className="ve-btn ve-btn-primary" style={{ width: '100%', marginTop: 18 }} type="submit" disabled={!wsConnected}>
           {wsConnected ? 'Create Account' : 'Connecting…'}
         </button>
-        <p className="ve-muted" style={{ marginTop: 14 }}>
-          Already have an account? <button type="button" className="ve-btn-ghost" style={{ color: 'var(--ve-rose-2)' }} onClick={onGoLogin}>Sign in</button>
+        <p className="ve-muted" style={{ marginTop: 18 }}>
+          Already have an account? <button type="button" className="ve-btn-ghost" style={{ color: 'var(--ve-rose-2)', fontWeight: 600 }} onClick={onGoLogin}>Sign in</button>
         </p>
       </form>
     </div>
@@ -414,8 +426,34 @@ function HomePage({ netState, user, emit, goToLive, goToProfile }: {
         <span className="ve-muted">{netState.users.length} online</span>
       </div>
       <div style={{ padding: 20, display: 'grid', gap: 20 }}>
+        {/* Stats bar */}
+        <div className="ve-stats-bar">
+          <div className="ve-stat-card">
+            <div className="ve-stat-card-icon" style={{ background: 'rgba(225, 29, 72, 0.15)', color: 'var(--ve-rose-2)' }}>👥</div>
+            <div>
+              <div className="ve-stat-card-value">{allUsers.length}</div>
+              <div className="ve-stat-card-label">Registered</div>
+            </div>
+          </div>
+          <div className="ve-stat-card">
+            <div className="ve-stat-card-icon" style={{ background: 'rgba(34, 197, 94, 0.15)', color: 'var(--ve-ok)' }}>🟢</div>
+            <div>
+              <div className="ve-stat-card-value">{netState.users.length}</div>
+              <div className="ve-stat-card-label">Online now</div>
+            </div>
+          </div>
+          <div className="ve-stat-card">
+            <div className="ve-stat-card-icon" style={{ background: 'rgba(255, 45, 85, 0.15)', color: 'var(--ve-live)' }}>📡</div>
+            <div>
+              <div className="ve-stat-card-value">{netState.lives.length}</div>
+              <div className="ve-stat-card-label">Live streams</div>
+            </div>
+          </div>
+        </div>
+
+        {/* People — registered users' info prominent */}
         <div>
-          <h3 style={{ marginTop: 0 }}>People</h3>
+          <h3 className="ve-section-title">People</h3>
           <div className="ve-user-grid">
             {allUsers.map(u => {
               const online = onlineIds.has(u.id)
@@ -431,15 +469,18 @@ function HomePage({ netState, user, emit, goToLive, goToProfile }: {
                     <span className={`ve-presence-dot${online ? ' online' : ''}`} />
                   </div>
                   <strong>{u.name}</strong>
-                  {liveId ? <span className="ve-badge" style={{ marginTop: 4 }}><span className="ve-live-dot" /> LIVE</span> : (u.city && <span className="ve-muted">{u.city}</span>)}
+                  {liveId
+                    ? <span className="ve-badge" style={{ marginTop: 4 }}><span className="ve-live-dot" /> LIVE</span>
+                    : (u.city && <span className="ve-muted">{u.city}</span>)}
                 </button>
               )
             })}
           </div>
         </div>
 
+        {/* Status updates */}
         <div>
-          <h3 style={{ marginTop: 0 }}>Status updates</h3>
+          <h3 className="ve-section-title">Status updates</h3>
           <form className="ve-panel" onSubmit={handlePost}>
             <input className="ve-field" style={{ marginTop: 0 }} value={text} onChange={e => setText(e.target.value)} placeholder="Share an update" />
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -593,7 +634,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
       })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Live streaming unavailable'); return }
-      const client = AgoraRTC.createClient({ mode: 'live', role: asHost ? 'host' : 'audience' })
+      const client = (await AgoraRTC()).createClient({ mode: 'live', role: asHost ? 'host' : 'audience' })
       if (!asHost) {
         client.on('user-published', async (u: any, mediaType: any) => {
           try {
@@ -632,7 +673,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
     let stop = false
     ;(async () => {
       try {
-        const [mic, cam] = await AgoraRTC.createMicrophoneAndCameraTracks()
+        const [mic, cam] = await (await AgoraRTC()).createMicrophoneAndCameraTracks()
         if (stop) { mic.close(); cam.close(); return }
         tracksRef.current = [mic, cam]
         if (videoRef.current) {
@@ -673,7 +714,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true }
         setStatus('You are live (studio)')
         try {
-          const customVideo = AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: stream.getVideoTracks()[0] })
+          const customVideo = (await AgoraRTC()).createCustomVideoTrack({ mediaStreamTrack: stream.getVideoTracks()[0] })
           tracksRef.current = [customVideo]
           await startAgoraVideo(liveId, true, [customVideo])
         } catch { /* studio preview keeps running even if publish fails */ }

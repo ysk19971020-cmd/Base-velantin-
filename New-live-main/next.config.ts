@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["socket.io", "pg", "@prisma/client", "@prisma/adapter-pg", "@prisma/client/runtime/library"],
+  serverExternalPackages: ["pg", "@prisma/adapter-pg"],
   typescript: {
     ignoreBuildErrors: true,
   },

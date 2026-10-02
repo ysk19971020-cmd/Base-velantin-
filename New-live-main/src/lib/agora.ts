@@ -11,7 +11,9 @@
 // Until they are set, login() throws and the UI degrades gracefully.
 // ---------------------------------------------------------------------------
 
-import AgoraRTM from 'agora-rtm-sdk'
+// Agora RTM SDK references browser globals at module-evaluation time, so
+// it must be lazy-loaded on the client only (this module is imported by
+// page.tsx which Next.js SSR-renders on first load).
 
 type MessageListener = (channel: string, publisher: string, message: string) => void
 type PresenceListener = (channel: string, userIds: string[]) => void
@@ -47,7 +49,8 @@ class AgoraRealtime {
     this.userId = userId
     this.fetchCreds = fetchCreds
 
-    const { RTM } = AgoraRTM as any
+    const AgoraRTM = (await import('agora-rtm-sdk')).default as any
+    const { RTM } = AgoraRTM
     const creds = await fetchCreds()
     const rtm = new RTM(creds.appId, userId)
 

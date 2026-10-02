@@ -44,18 +44,13 @@
       "requiredAtBoot": false
     },
     {
-      "name": "LIVEKIT_URL",
-      "description": "LiveKit project URL (wss://<project>.livekit.cloud) — enables live video/audio streaming. Get from LiveKit Cloud console (https://cloud.livekit.io).",
+      "name": "AGORA_APP_ID",
+      "description": "Agora App ID (optional — enables live video/audio + realtime chat). Get from Agora Console (https://console.agora.io) → Project Management.",
       "requiredAtBoot": false
     },
     {
-      "name": "LIVEKIT_API_KEY",
-      "description": "LiveKit API key — LiveKit Cloud console → project Settings → API keys.",
-      "requiredAtBoot": false
-    },
-    {
-      "name": "LIVEKIT_API_SECRET",
-      "description": "LiveKit API secret — LiveKit Cloud console → project Settings → API keys.",
+      "name": "AGORA_APP_CERTIFICATE",
+      "description": "Agora App Certificate (optional — needed to mint RTC/RTM tokens). Get from Agora Console → Project Management → primary certificate.",
       "requiredAtBoot": false
     },
     {
