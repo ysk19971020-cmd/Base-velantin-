@@ -108,6 +108,7 @@ function LandingPage({ onLogin, onGoRegister, wsConnected, wsError }: {
     <div className="ve-hero">
       <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
+        <div className="ve-heart-glow">❤️</div>
         <div className="ve-tag">{BRAND.tagline}</div>
         <h1>{BRAND.short}</h1>
         <p>Real-time live streaming with gifts, chat, and creator payouts.</p>
@@ -159,6 +160,7 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
     <div className="ve-hero">
       <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
+        <div className="ve-heart-glow">❤️</div>
         <div className="ve-tag">{BRAND.tagline}</div>
         <h1>Create Account</h1>
         <p className="ve-muted">Join Valentine Express</p>
