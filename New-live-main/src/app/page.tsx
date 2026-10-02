@@ -562,7 +562,6 @@ function LivePage({ netState, emit, user, setPage, setThreadChatId, goToLive }: 
   setPage: (p: Page) => void; setThreadChatId: (id: string | null) => void
   goToLive: (liveId: string) => void
 }) {
-  const [title, setTitle] = useState('')
   const mine = netState.lives.find(l => l.hostId === user.id)
 
   useEffect(() => {
@@ -574,31 +573,20 @@ function LivePage({ netState, emit, user, setPage, setThreadChatId, goToLive }: 
 
   return (
     <section className="ve-stage">
-      <div className="ve-topbar">
-        <strong>Valentine Express stage</strong>
-        <span className="ve-muted">Live streaming</span>
-      </div>
       <div style={{ padding: 20, display: 'grid', gap: 16 }}>
-        <div className="ve-panel">
-          <h2 style={{ marginTop: 0 }}>Go live</h2>
-          <p className="ve-muted">Your camera is sent to everyone who taps Watch.</p>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           {mine ? (
-            <button className="ve-btn ve-btn-primary" onClick={() => { setPage('liveStage'); setThreadChatId(null) }}>Return to my live</button>
+            <button className="ve-btn ve-btn-primary" style={{ fontSize: 16, padding: '14px 32px' }} onClick={() => { setPage('liveStage'); setThreadChatId(null) }}>Return to my live</button>
           ) : (
-            <form onSubmit={e => {
-              e.preventDefault()
-              emit({ type: 'live_start', title: title || `${user.name} live` })
-            }}>
-              <input className="ve-field" placeholder="Room title" value={title} onChange={e => setTitle(e.target.value)} />
-              <button className="ve-btn ve-btn-primary" style={{ marginTop: 12 }} type="submit">Start live</button>
-            </form>
+            <button className="ve-btn ve-btn-primary" style={{ fontSize: 16, padding: '14px 32px' }} onClick={() => emit({ type: 'live_start', title: `${user.name} live` })}>
+              <span className="ve-live-dot" /> Go Live
+            </button>
           )}
         </div>
         <div className="ve-grid-2">
           {netState.lives.map(l => (
             <button key={l.id} className="ve-panel" style={{ textAlign: 'left' }} onClick={() => goToLive(l.id)}>
               <div className="ve-badge"><span className="ve-live-dot" /> LIVE · {l.host}</div>
-              <h3>{l.title}</h3>
               <p className="ve-muted">{l.viewers > 0 ? `${l.viewers} watching` : 'Live now'}</p>
             </button>
           ))}
