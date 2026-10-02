@@ -16,6 +16,16 @@ export const metadata: Metadata = {
   other: {
     // HilltopAds site-ownership verification tag
     "67f5ac29789ff90484841abb12c2590f7f8ef301": "67f5ac29789ff90484841abb12c2590f7f8ef301",
+    <!-- PushAlert Unified Code -->
+<script type="text/javascript">
+    (function(d, t) {
+        var g = d.createElement(t),
+        s = d.getElementsByTagName(t)[0];
+        g.src = "https://cdn.pushalert.co/unified_529794a344062127a86beef5a2eab39e.js";
+        s.parentNode.insertBefore(g, s);
+    }(document, "script"));
+</script>
+<!-- End PushAlert Unified Code -->
   },
 };
 
@@ -29,16 +39,6 @@ export default function RootLayout({
       <body className="antialiased">
         {children}
       </body>
-      <!-- PushAlert Unified Code -->
-<script type="text/javascript">
-    (function(d, t) {
-        var g = d.createElement(t),
-        s = d.getElementsByTagName(t)[0];
-        g.src = "https://cdn.pushalert.co/unified_529794a344062127a86beef5a2eab39e.js";
-        s.parentNode.insertBefore(g, s);
-    }(document, "script"));
-</script>
-<!-- End PushAlert Unified Code -->
     </html>
   );
 }
