@@ -1,8 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import AgoraRTC from 'agora-rtc-sdk-ng'
 import { getRealtime, LOBBY_CHANNEL, chatChannel, liveChannel } from '@/lib/agora'
+
+// Agora RTC SDK references `window` at module-evaluation time, so it cannot
+// be imported at the top level of a 'use client' component (Next.js still
+// SSRs client components for the initial render). Lazy-load it on the
+// browser side only.
+let _AgoraRTC: any = null
+async function AgoraRTC() {
+  if (!_AgoraRTC) _AgoraRTC = (await import('agora-rtc-sdk-ng')).default
+  return _AgoraRTC
+}
 import { authFetch, setToken, clearToken, getToken } from '@/lib/auth-client'
 import { uploadImageDirect } from '@/lib/cloudinary-client'
 import { requestNotificationPermission, listenForForegroundMessages } from '@/lib/push-notifications'
@@ -593,7 +602,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
       })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Live streaming unavailable'); return }
-      const client = AgoraRTC.createClient({ mode: 'live', role: asHost ? 'host' : 'audience' })
+      const client = (await AgoraRTC()).createClient({ mode: 'live', role: asHost ? 'host' : 'audience' })
       if (!asHost) {
         client.on('user-published', async (u: any, mediaType: any) => {
           try {
@@ -632,7 +641,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
     let stop = false
     ;(async () => {
       try {
-        const [mic, cam] = await AgoraRTC.createMicrophoneAndCameraTracks()
+        const [mic, cam] = await (await AgoraRTC()).createMicrophoneAndCameraTracks()
         if (stop) { mic.close(); cam.close(); return }
         tracksRef.current = [mic, cam]
         if (videoRef.current) {
@@ -673,7 +682,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true }
         setStatus('You are live (studio)')
         try {
-          const customVideo = AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: stream.getVideoTracks()[0] })
+          const customVideo = (await AgoraRTC()).createCustomVideoTrack({ mediaStreamTrack: stream.getVideoTracks()[0] })
           tracksRef.current = [customVideo]
           await startAgoraVideo(liveId, true, [customVideo])
         } catch { /* studio preview keeps running even if publish fails */ }
