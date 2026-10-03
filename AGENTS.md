@@ -24,7 +24,7 @@
 3. `node_modules` is a named volume (`app_node_modules`) so container installs don't pollute the host
 
 ## Key fixes applied for this environment
-- **`@prisma/client` REMOVED from `serverExternalPackages`** in `next.config.ts` — including it caused Turbopack to try resolving a hash-suffixed generated module (`@prisma/client-<hash>`) that doesn't exist as a standalone package, making all API routes 500. Turbopack bundles `@prisma/client` natively without issues. `pg` and `@prisma/adapter-pg` remain external.
+- **`serverExternalPackages` is EMPTY** in `next.config.ts` — listing `pg` or `@prisma/adapter-pg` caused Turbopack to treat `@prisma/client` as external too (hash-suffixed module `@prisma/client-<hash>` that doesn't exist), making all API routes 500. Neither `pg` nor `@prisma/adapter-pg` is imported in the source code, so they don't need to be external. Turbopack bundles `@prisma/client` natively without issues.
 - **`agora-rtc-sdk-ng` and `agora-rtm-sdk` are lazy-loaded** — both SDKs reference `window` at module-evaluation time, so a top-level `import` in a `'use client'` component crashes SSR (`ReferenceError: window is not defined`). `page.tsx` uses an async `AgoraRTC()` loader; `agora.ts` dynamically imports `agora-rtm-sdk` inside the `login()` method.
 - **`allowedDevOrigins`** set to `3000-${BASE44_PUBLIC_HOST_SUFFIX}` so Next.js accepts the preview origin's HMR/asset requests
 - **`BETTER_AUTH_SECRET`** set to a real value in `.env.base44-defaults` (session.ts throws if it's the default placeholder)
