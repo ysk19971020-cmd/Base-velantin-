@@ -609,6 +609,24 @@ function LiveStagePage({ netState, emit, user, setPage }: {
   const tracksRef = useRef<any[]>([])
   const [text, setText] = useState('')
   const [status, setStatus] = useState('Connecting…')
+  const [isFs, setIsFs] = useState(false)
+  const containerRef = useRef<HTMLElement>(null)
+
+  function toggleFullscreen() {
+    const el = containerRef.current
+    if (!el) return
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().then(() => setIsFs(true)).catch(() => {})
+    } else {
+      document.exitFullscreen?.().then(() => setIsFs(false)).catch(() => {})
+    }
+  }
+
+  useEffect(() => {
+    const onFsChange = () => setIsFs(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
 
   // Agora RTC handles all video/audio transport (the host publishes one
   // stream that Agora's cloud fans out to every viewer). RTM (via emit +
@@ -741,7 +759,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
   const comments = netState.comments[live.id] ?? []
 
   return (
-    <section className="ve-stage ve-live-fullscreen">
+    <section className="ve-stage ve-live-fullscreen" ref={containerRef}>
       <div className="ve-live-frame ve-live-frame-full">
         <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
         <div className="ve-live-overlay">
@@ -757,6 +775,7 @@ function LiveStagePage({ netState, emit, user, setPage }: {
               <input value={text} onChange={e => setText(e.target.value)} placeholder="Say something…" />
               <button className="ve-icon-btn ve-icon-btn-primary" type="submit" aria-label="Send">➤</button>
             </form>
+            <button className="ve-icon-btn" aria-label="Fullscreen" onClick={toggleFullscreen}>{isFs ? '⤡' : '⛶'}</button>
             {isHost && (
               <button className="ve-icon-btn ve-icon-btn-danger" aria-label="End live" onClick={() => {
                 emit({ type: 'live_end', liveId: live.id })
