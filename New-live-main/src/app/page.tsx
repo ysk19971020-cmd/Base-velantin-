@@ -426,31 +426,6 @@ function HomePage({ netState, user, emit, goToLive, goToProfile }: {
         <span className="ve-muted">{netState.users.length} online</span>
       </div>
       <div style={{ padding: 20, display: 'grid', gap: 20 }}>
-        {/* Stats bar */}
-        <div className="ve-stats-bar">
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(225, 29, 72, 0.15)', color: 'var(--ve-rose-2)' }}>👥</div>
-            <div>
-              <div className="ve-stat-card-value">{allUsers.length}</div>
-              <div className="ve-stat-card-label">Registered</div>
-            </div>
-          </div>
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(34, 197, 94, 0.15)', color: 'var(--ve-ok)' }}>🟢</div>
-            <div>
-              <div className="ve-stat-card-value">{netState.users.length}</div>
-              <div className="ve-stat-card-label">Online now</div>
-            </div>
-          </div>
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(255, 45, 85, 0.15)', color: 'var(--ve-live)' }}>📡</div>
-            <div>
-              <div className="ve-stat-card-value">{netState.lives.length}</div>
-              <div className="ve-stat-card-label">Live streams</div>
-            </div>
-          </div>
-        </div>
-
         {/* People — registered users' info prominent */}
         <div>
           <h3 className="ve-section-title">People</h3>
