@@ -28,7 +28,7 @@ import {
 
 // ============ CONSTANTS ============
 
-const BRAND = { name: 'Valentine Express Live Stream', short: 'Valentine Express', tagline: 'Live. Gift. Connect.' }
+const BRAND = { name: 'SL GIRL ONLINE', short: 'SL GIRL ONLINE', tagline: 'Live. Gift. Connect.' }
 
 const GIFT_CATALOG = [
   { id: 'rose', name: 'Rose', coins: 10, icon: '🌹' },
@@ -106,12 +106,19 @@ function LandingPage({ onLogin, onGoRegister, wsConnected, wsError }: {
 
   return (
     <div className="ve-hero">
+      <div className="ve-hero-brand">
+        <div className="ve-hero-brand-title">
+          <span className="ve-heart-icon">❤</span>
+          {BRAND.name}
+          <span className="ve-heart-icon">❤</span>
+        </div>
+      </div>
       <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
         <div className="ve-heart-glow">❤️</div>
         <div className="ve-tag">{BRAND.tagline}</div>
-        <h1>{BRAND.short}</h1>
-        <p>Real-time live streaming with gifts, chat, and creator payouts.</p>
+        <h1>Welcome back</h1>
+        <p>Sign in to continue</p>
         <input className="ve-field" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="ve-field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         {error && <p className="ve-err" style={{ marginTop: 8 }}>{error}</p>}
@@ -158,12 +165,19 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
 
   return (
     <div className="ve-hero">
+      <div className="ve-hero-brand">
+        <div className="ve-hero-brand-title">
+          <span className="ve-heart-icon">❤</span>
+          {BRAND.name}
+          <span className="ve-heart-icon">❤</span>
+        </div>
+      </div>
       <form className="ve-hero-card" onSubmit={handleSubmit}>
         <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
         <div className="ve-heart-glow">❤️</div>
         <div className="ve-tag">{BRAND.tagline}</div>
         <h1>Create Account</h1>
-        <p className="ve-muted">Join Valentine Express</p>
+        <p className="ve-muted">Join {BRAND.name}</p>
         <input className="ve-field" placeholder="Display name" value={name} onChange={e => setName(e.target.value)} />
         <input className="ve-field" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="ve-field" type="password" placeholder="Password (6+ chars)" value={password} onChange={e => setPassword(e.target.value)} />
