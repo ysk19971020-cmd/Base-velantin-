@@ -28,7 +28,7 @@ import {
 
 // ============ CONSTANTS ============
 
-const BRAND = { name: 'Valentine Express Live Stream', short: 'Valentine Express', tagline: 'Live. Gift. Connect.' }
+const BRAND = { name: 'SL GIRL ONLINE', short: 'SL GIRL ONLINE', tagline: 'Live. Gift. Connect.' }
 
 const GIFT_CATALOG = [
   { id: 'rose', name: 'Rose', coins: 10, icon: '🌹' },
@@ -106,12 +106,14 @@ function LandingPage({ onLogin, onGoRegister, wsConnected, wsError }: {
 
   return (
     <div className="ve-hero">
+      <div className="ve-hero-brand">
+        <div className="ve-hero-brand-title">
+          <span className="ve-heart-icon">❤</span>
+          {BRAND.name}
+          <span className="ve-heart-icon">❤</span>
+        </div>
+      </div>
       <form className="ve-hero-card" onSubmit={handleSubmit}>
-        <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
-        <div className="ve-heart-glow">❤️</div>
-        <div className="ve-tag">{BRAND.tagline}</div>
-        <h1>{BRAND.short}</h1>
-        <p>Real-time live streaming with gifts, chat, and creator payouts.</p>
         <input className="ve-field" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="ve-field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         {error && <p className="ve-err" style={{ marginTop: 8 }}>{error}</p>}
@@ -158,12 +160,14 @@ function RegisterPage({ onRegister, onGoLogin, wsConnected }: {
 
   return (
     <div className="ve-hero">
+      <div className="ve-hero-brand">
+        <div className="ve-hero-brand-title">
+          <span className="ve-heart-icon">❤</span>
+          {BRAND.name}
+          <span className="ve-heart-icon">❤</span>
+        </div>
+      </div>
       <form className="ve-hero-card" onSubmit={handleSubmit}>
-        <img className="ve-logo" src="/icon.jpg" alt="Valentine Express" />
-        <div className="ve-heart-glow">❤️</div>
-        <div className="ve-tag">{BRAND.tagline}</div>
-        <h1>Create Account</h1>
-        <p className="ve-muted">Join Valentine Express</p>
         <input className="ve-field" placeholder="Display name" value={name} onChange={e => setName(e.target.value)} />
         <input className="ve-field" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="ve-field" type="password" placeholder="Password (6+ chars)" value={password} onChange={e => setPassword(e.target.value)} />
@@ -426,31 +430,6 @@ function HomePage({ netState, user, emit, goToLive, goToProfile }: {
         <span className="ve-muted">{netState.users.length} online</span>
       </div>
       <div style={{ padding: 20, display: 'grid', gap: 20 }}>
-        {/* Stats bar */}
-        <div className="ve-stats-bar">
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(225, 29, 72, 0.15)', color: 'var(--ve-rose-2)' }}>👥</div>
-            <div>
-              <div className="ve-stat-card-value">{allUsers.length}</div>
-              <div className="ve-stat-card-label">Registered</div>
-            </div>
-          </div>
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(34, 197, 94, 0.15)', color: 'var(--ve-ok)' }}>🟢</div>
-            <div>
-              <div className="ve-stat-card-value">{netState.users.length}</div>
-              <div className="ve-stat-card-label">Online now</div>
-            </div>
-          </div>
-          <div className="ve-stat-card">
-            <div className="ve-stat-card-icon" style={{ background: 'rgba(255, 45, 85, 0.15)', color: 'var(--ve-live)' }}>📡</div>
-            <div>
-              <div className="ve-stat-card-value">{netState.lives.length}</div>
-              <div className="ve-stat-card-label">Live streams</div>
-            </div>
-          </div>
-        </div>
-
         {/* People — registered users' info prominent */}
         <div>
           <h3 className="ve-section-title">People</h3>
